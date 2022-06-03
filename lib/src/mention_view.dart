@@ -50,6 +50,7 @@ class FlutterMentions extends StatefulWidget {
     this.appendSpaceOnAdd = true,
     this.hideSuggestionList = false,
     this.onSuggestionVisibleChanged,
+    this.onMentionDrop,
   }) : super(key: key);
 
   final bool hideSuggestionList;
@@ -241,6 +242,9 @@ class FlutterMentions extends StatefulWidget {
   /// {@macro flutter.services.autofill.autofillHints}
   final Iterable<String>? autofillHints;
 
+  /// Triggers when the suggestion was added by tapping on suggestion.
+  final Function(Map<String, dynamic> m)? onMentionDrop;
+
   @override
   FlutterMentionsState createState() => FlutterMentionsState();
 }
@@ -249,7 +253,7 @@ class FlutterMentionsState extends State<FlutterMentions> {
   AnnotationEditingController? controller;
   ValueNotifier<bool> showSuggestions = ValueNotifier(false);
   LengthMap? _selectedMention;
-  String _pattern = '';
+  String _triggerPattern = ''; // Trigger Patterns
 
   Map<String, Annotation> mapToAnotation() {
     final data = <String, Annotation>{};
@@ -302,11 +306,16 @@ class FlutterMentionsState extends State<FlutterMentions> {
     final _list = widget.mentions
         .firstWhere((element) => selectedMention.str.contains(element.trigger));
 
+    var anot = "${_list.trigger}${value['display']}"; // mention detected
+    controller!.register(anot); // register the pattern picked
+    var newTxt =
+        "$anot${widget.appendSpaceOnAdd ? ' ' : ''}"; // formated mention to be displayed
+
     // find the text by range and replace with the new value.
     controller!.text = controller!.value.text.replaceRange(
       selectedMention.start,
       selectedMention.end,
-      "${_list.trigger}${value['display']}${widget.appendSpaceOnAdd ? ' ' : ''}",
+      newTxt,
     );
 
     if (widget.onMentionAdd != null) widget.onMentionAdd!(value);
@@ -336,10 +345,10 @@ class FlutterMentionsState extends State<FlutterMentions> {
       });
 
       final val = lengthMap.indexWhere((element) {
-        _pattern = widget.mentions.map((e) => e.trigger).join('|');
+        //_pattern = widget.mentions.map((e) => e.trigger).join('|');
 
         return element.end == cursorPos &&
-            element.str.toLowerCase().contains(RegExp(_pattern));
+            element.str.toLowerCase().contains(RegExp(_triggerPattern));
       });
 
       showSuggestions.value = val != -1;
@@ -350,6 +359,62 @@ class FlutterMentionsState extends State<FlutterMentions> {
 
       setState(() {
         _selectedMention = val == -1 ? null : lengthMap[val];
+      });
+    }
+  }
+
+  bool isAlphaNumeric(String s) {
+    var pattern = RegExp(r"^[a-zA-Z0-9]+$");
+    return pattern.hasMatch(s);
+    //return s.matchAsPrefix(r"^[a-zA-Z0-9]+$") != null;
+  }
+
+  /// ? This method will be triggered only when text changes & not when cursor changes
+  void suggestionListerner2() {
+    final cursorPos = controller!.selection.baseOffset;
+    // if (cursorPos == 0) return;
+    // Atleast 1 Char is Present
+    if (cursorPos >= 0) {
+      // 1. Find the Trailing Matching Mention
+
+      var str = controller!.value.text; // entire text present in text field
+      var substr =
+          str.substring(0, cursorPos); // text before current cursor position
+      var cl = substr.length; // curr length
+      var s = -1; // start index for trailing match
+      var valid = cl != 0;
+
+      //if (cl > 0) {
+      //valid = true;
+      // there must be atleast 1 character in trigger to show the suggestion box
+      // TODO: Check for independent word from end
+      //var tl = str.length; // total length
+
+      // if ((tl > cl)) {
+      //   // there are more characters after current cursor position
+      //   var nextChar = str[cursorPos];
+      //   // valid char after mention must be a word break
+      //   valid = !isAlphaNumeric(nextChar);
+      // }
+
+      if (valid) {
+        // Detect the trailing mention
+        //! As of now valid mention is consider as independent (ie not part od any text)
+        // ? there must be a space before trigger or it should be start of text
+        var re = RegExp('(?<=(^| ))($_triggerPattern)([a-z0-9A-Z]* ?)+\$');
+        var m = re.firstMatch(substr);
+        s = m?.start ?? -1;
+      }
+      var showBox = s != -1; // Suggestion Boz
+      showSuggestions.value = showBox;
+
+      if (widget.onSuggestionVisibleChanged != null) {
+        widget.onSuggestionVisibleChanged!(showBox);
+      }
+      setState(() {
+        _selectedMention = !showBox
+            ? null
+            : LengthMap(start: s, end: cursorPos, str: substr.substring(s));
       });
     }
   }
@@ -373,15 +438,17 @@ class FlutterMentionsState extends State<FlutterMentions> {
   @override
   void initState() {
     final data = mapToAnotation();
+    _triggerPattern = widget.mentions.map((e) => e.trigger).join('|');
 
-    controller = AnnotationEditingController(data);
+    controller =
+        AnnotationEditingController(data, onMentionDrop: widget.onMentionDrop);
 
     if (widget.defaultText != null) {
       controller!.text = widget.defaultText!;
     }
 
     // setup a listener to figure out which suggestions to show based on the trigger
-    controller!.addListener(suggestionListerner);
+    //controller!.addListener(suggestionListerner);
 
     controller!.addListener(inputListeners);
 
@@ -401,6 +468,7 @@ class FlutterMentionsState extends State<FlutterMentions> {
     super.didUpdateWidget(widget);
 
     controller!.mapping = mapToAnotation();
+    _triggerPattern = widget.mentions.map((e) => e.trigger).join('|');
   }
 
   @override
@@ -431,9 +499,11 @@ class FlutterMentionsState extends State<FlutterMentions> {
                       final ele = element['display'].toLowerCase();
                       final str = _selectedMention!.str
                           .toLowerCase()
-                          .replaceAll(RegExp(_pattern), '');
+                          .replaceAll(RegExp(_triggerPattern), '');
 
-                      return ele == str ? false : ele.contains(str);
+                      //return ele == str ? false : ele.contains(str);
+                      // TODO: Decide if to allow display BOX for whitespaces at end or not ?
+                      return ele.contains(str.trim());
                     }).toList(),
                     onTap: (value) {
                       addMention(value, list);
@@ -448,6 +518,7 @@ class FlutterMentionsState extends State<FlutterMentions> {
             ...widget.leading,
             Expanded(
               child: TextField(
+                onChanged: (_) => suggestionListerner2(),
                 maxLines: widget.maxLines,
                 minLines: widget.minLines,
                 maxLength: widget.maxLength,
