@@ -13,16 +13,8 @@ bool isWhiteSpace(String s) {
 int identify_trailing_query(String txt, RegExp trgr) {
   //* Better Approach (Using Builtin Functions)
   var idx = txt.lastIndexOf(trgr);
-
-  if (idx == -1) return -1;
-
-  // Check for whitespace in front
-  if (idx - 1 >= 0) {
-    var char = txt[idx - 1];
-    return isWhiteSpace(char) ? idx : -1;
-  }
-
-  return idx;
+  if (idx <= 0) return idx; // ie idx can be either from {0, 1}
+  return isWhiteSpace(txt[idx - 1]) ? idx : -1; // Check for whitespace in front
 }
 
 /// Detect the Trailing Trigger Query
