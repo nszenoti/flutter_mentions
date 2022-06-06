@@ -7,6 +7,7 @@ class FlutterMentions extends StatefulWidget {
     this.defaultText,
     this.suggestionPosition = SuggestionPosition.Bottom,
     this.suggestionListHeight = 300.0,
+    this.suggestionListWidth,
     this.onMarkupChanged,
     this.onMentionAdd,
     this.onSearchChanged,
@@ -84,6 +85,11 @@ class FlutterMentions extends StatefulWidget {
   ///
   /// Defaults to `300.0`
   final double suggestionListHeight;
+
+  /// Max width for the suggestion list
+  ///
+  /// Defaults to `infinity`
+  final double? suggestionListWidth;
 
   /// A Functioned which is triggered when ever the input changes
   /// but with the markup of the selected mentions
@@ -401,9 +407,7 @@ class FlutterMentionsState extends State<FlutterMentions> {
         // Detect the trailing mention
         //! As of now valid mention is consider as independent (ie not part od any text)
         // ? there must be a space before trigger or it should be start of text
-        var re = RegExp('(?<=(^| ))($_triggerPattern)([a-z0-9A-Z]* ?)+\$');
-        var m = re.firstMatch(substr);
-        s = m?.start ?? -1;
+        s = identify_trailing_query(substr, RegExp(_triggerPattern));
       }
       var showBox = s != -1; // Suggestion Boz
       showSuggestions.value = showBox;
@@ -482,17 +486,18 @@ class FlutterMentionsState extends State<FlutterMentions> {
     return Container(
       child: PortalEntry(
         portalAnchor: widget.suggestionPosition == SuggestionPosition.Bottom
-            ? Alignment.topCenter
-            : Alignment.bottomCenter,
+            ? Alignment.topLeft
+            : Alignment.bottomLeft,
         childAnchor: widget.suggestionPosition == SuggestionPosition.Bottom
-            ? Alignment.bottomCenter
-            : Alignment.topCenter,
+            ? Alignment.bottomLeft
+            : Alignment.topLeft,
         portal: ValueListenableBuilder(
           valueListenable: showSuggestions,
           builder: (BuildContext context, bool show, Widget? child) {
             return show && !widget.hideSuggestionList
                 ? OptionList(
                     suggestionListHeight: widget.suggestionListHeight,
+                    suggestionListWidth: widget.suggestionListWidth,
                     suggestionBuilder: list.suggestionBuilder,
                     suggestionListDecoration: widget.suggestionListDecoration,
                     data: list.data.where((element) {
